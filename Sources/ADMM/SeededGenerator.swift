@@ -1,6 +1,7 @@
 import Foundation
 import GameKit
 
+@available(OSX 10.11, *)
 @available(iOS 9.0, *)
 public class SeededGenerator: RandomNumberGenerator {
     public let seed: UInt64
@@ -23,6 +24,7 @@ public class SeededGenerator: RandomNumberGenerator {
     }
 }
 
+@available(OSX 10.11, *)
 @available(iOS 9.0, *)
 public extension UInt64 {
     func rng() -> SeededGenerator {
