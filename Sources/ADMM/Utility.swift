@@ -5,6 +5,8 @@ import Foundation
 class ObjectWrapper<T>: Equatable, Hashable {
     private let obj: T
     
+    var wrapped: T { obj }
+    
     init(_ obj: T) {
         self.obj = obj
     }
