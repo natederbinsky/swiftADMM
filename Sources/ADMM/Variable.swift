@@ -20,7 +20,7 @@ public class Variable: CustomStringConvertible {
         self.problem = problem
     }
     
-    public func connectMinimizer(minimizer: Minimizer) -> Edge {
+    func connectMinimizer(minimizer: Minimizer) -> Edge {
         return problem.addEdge(variable: index, minimizer: minimizer)
     }
 }
