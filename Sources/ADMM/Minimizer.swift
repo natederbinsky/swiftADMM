@@ -40,7 +40,7 @@ public class EqualMinimizer: Minimizer {
     private var edges = [Edge]()
     
     var value: Double? {
-        return (edges.count > 0) ? edges[0].z : nil
+        return edges.isEmpty ? nil: edges[0].z
     }
     
     //
