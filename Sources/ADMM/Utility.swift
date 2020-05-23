@@ -50,3 +50,9 @@ public extension Int {
         return 0..<self
     }
 }
+
+/// Performs a known bad cast to crash
+public func crash() {
+    let one: Int = Int("b")!
+    print(one)
+}

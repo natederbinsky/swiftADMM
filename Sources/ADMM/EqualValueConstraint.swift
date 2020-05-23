@@ -124,9 +124,7 @@ public class EqualValueConstraint {
                 
                 // Well since we are 100% sure of two
                 // contradictory values, then...
-                // 1 surely equals "b"
-                let one: Int = Int("b")!
-                print(one)
+                crash()
             }
         }
         
