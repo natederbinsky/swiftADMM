@@ -1,34 +1,50 @@
-import Foundation
-
-typealias MinimizerWrapper = ObjectWrapper<Minimizer>
-
-//
-
+/// Bi-partite graph representing an objective function:
+/// - left = factors (summed sub-functions)
+/// - right = variables
 public class ProblemGraph {
+    /// When all iteration-over-iteration message differences
+    /// are below this value, the algorithm has converged
     public let convergenceThresh: Double
+    
+    /// If true, solve using the Three-Weight Algorithm (TWA);
+    /// otherwise Alternating Direction Method of Multipliers (ADMM)
     public let twa: Bool
     
+    /// Number of graph edges
     public var numEdges: Int {
-        return edges.count
+        edges.count
     }
     
-    public var numLeft: Int {
-        return left.count
+    /// Number of enabled edges
+    ///
+    /// - Important: requires time linear in the number of edges to compute
+    public var numEnabledEdges: Int {
+        (edges.filter { $0.isEnabled }).count
     }
     
-    public var numRight: Int {
-        return right.count
+    /// Number of factor nodes
+    public var numFactors: Int {
+        left.count
     }
     
-    //
+    /// Number of enabled factors
+    ///
+    /// - Important: requires time linear in the number of factors to compute
+    public var numEnabledFactors: Int {
+        (left.filter { $0.isEnabled }).count
+    }
     
-    // Setting alpha is definitely a bad idea during an iteration,
-    // both in terms of being a bad idea, but also will result
-    // in unclear behavior
-    private var myAlpha: Double
+    /// Number of variable nodes
+    public var numVariables: Int {
+        right.count
+    }
+    
+    /// Learning rate
+    ///
+    /// - Important: setting requires time linear in the number of edges; setting alpha during an iteration will result in undefined behavior
     public var alpha: Double {
         get {
-            return myAlpha
+            myAlpha
         }
         
         set {
@@ -38,58 +54,111 @@ public class ProblemGraph {
             }
         }
     }
+    private var myAlpha: Double
     
-    private var myConverged = false
+    /// Has the algorithm converged?
+    ///
+    /// - Important: once the algorithm has converged, no iterations will commence until reinitialization
     public var converged: Bool {
-        return myConverged
+        myConverged
     }
+    private var myConverged = false
     
-    private var myIterations = 0
+    /// Number of iterations since last reinitialization
     public var iterations: Int {
-        return myIterations
+        myIterations
     }
+    private var myIterations = 0
     
-    //
+    // *********************************************
     
+    /// Collection of all edges
     private var edges = [Edge]()
-    private var left = [Minimizer]()
-    private var right = [EqualMinimizer]()
     
+    /// Collection of all factors
+    private var left = [Factor]()
+    
+    /// Collection of all variables
+    /// (or, truly, collections of edges related to each variable)
+    private var right = [EqualValueConstraint]()
+    
+    /// Iteration over edges
     private let edgeWorker: ArrayForWorker<Edge>
-    private let minimizerWorker: ArrayForWorker<Minimizer>
     
+    /// Iteration over factors
+    private let leftWorker: ArrayForWorker<Factor>
+    
+    /// Iteration over variables
+    private let rightWorker: ArrayForWorker<EqualValueConstraint>
+    
+    /// Values to initialize edges initially and after reinitialization
     private var variablesInitValue = [Double]()
+    
+    /// Weights to initialize edges initially and after reinitialization
     private var variablesInitWeight = [ResultWeight]()
-    private var leftCheck = [MinimizerWrapper:Int]()
     
-    //
+    // *********************************************
     
+    /// Create a new problem graph
+    ///
+    /// - Parameters:
+    ///   - twa: if true, indicates Three-Weight Algorithm; else ADMM
+    ///   - alpha: initial learning rate
+    ///   - convergenceThresh: message-difference threshold for convergence
+    ///   - concurrent: if true, each phase of the iteration uses available cores; else serial
     public init(twa: Bool, alpha: Double, convergenceThresh: Double = 1e-5, concurrent: Bool = true) {
         self.twa = twa
         self.myAlpha = alpha
         self.convergenceThresh = convergenceThresh
         
         edgeWorker = edges.getForWorker(concurrent)
-        minimizerWorker = left.getForWorker(concurrent)
+        leftWorker = left.getForWorker(concurrent)
+        rightWorker = right.getForWorker(concurrent)
     }
     
+    /// Resets the problem graph
+    ///
+    /// - Important: all variables are reset to initial value/weights; iterations set to 0; convergence bit flipped; factors enabled
     public func reinitialize() {
         for (i, eqMinimizer) in right.enumerated() {
             eqMinimizer.reset(variablesInitValue[i], variablesInitWeight[i])
         }
         
+        left.forEach { $0.reset() }
+        
         myIterations = 0
         myConverged = false
     }
     
+    /// Adds a new variable to the problem
+    ///
+    /// - Parameters:
+    ///   - initValue: initial variable value
+    ///   - initWeight: initial weight associated with initial value
+    ///
+    /// - Returns: newly created variable node (used to create edges)
     public func addVariable(_ initValue: Double, _ initWeight: ResultWeight = .std) -> Variable {
-        right.append(EqualMinimizer(twa: twa))
+        right.append(EqualValueConstraint(twa: twa))
         variablesInitValue.append(initValue)
         variablesInitWeight.append(initWeight)
         
         return Variable(problem: self, index: right.count-1)
     }
     
+    /// Adds a new factor to the problem
+    ///
+    /// - Returns: newly created factor node (required for minimizers)
+    public func addFactor() -> Factor {
+        let factor = Factor(problem: self)
+        left.append(factor)
+        
+        return factor
+    }
+    
+    /// Gets the current value of a variable
+    ///
+    /// - Parameter variable: index of the variable
+    /// - Returns: current value of the variable (or initial value)
     func variableValue(variable: Int) -> Double {
         if let rtVal = right[variable].value {
             return rtVal
@@ -98,39 +167,42 @@ public class ProblemGraph {
         }
     }
     
-    func addEdge(variable: Int, minimizer: Minimizer) -> Edge {
-        let newEdge = Edge(initialValue: variablesInitValue[variable], initialWeight: variablesInitWeight[variable], twa: twa, alpha: myAlpha)
+    /// Adds an edge to a variable
+    ///
+    /// - Parameter variable: index of the variable
+    /// - Returns: variable-associated edge
+    func addEdge(variable: Int) -> Edge {
+        let constraint = right[variable]
+        
+        let newEdge = Edge(right: constraint, twa: twa, initialAlpha: myAlpha, initialValue: variablesInitValue[variable], initialWeight: variablesInitWeight[variable])
+        
         edges.append(newEdge)
-        
-        let minChecker = MinimizerWrapper(minimizer)
-        let minimizerCount = leftCheck[minChecker, default: 0]
-        if minimizerCount == 0 {
-            left.append(minimizer)
-        }
-        leftCheck[minChecker] = minimizerCount + 1
-        
-        right[variable].addEdge(newEdge)
+        constraint.addEdge(newEdge)
         
         return newEdge
     }
     
+    /// Performs one full iteration of the algorithm on the current problem graph
+    /// (assuming the algorithm hasn't already converged)
+    ///
+    /// - Returns: has the algorithm converged?
     public func iterate() -> Bool {
-        if myConverged {
-            return true
-        }
+        guard !myConverged else { return true }
         
-        (minimizerWorker(left)) { $0.minimize() }
+        (leftWorker(left)) { $0.minimize() }
         (edgeWorker(edges)) { $0.pointRight() }
-        (minimizerWorker(right)) { $0.minimize() }
+        (rightWorker(right)) { $0.enforce() }
         (edgeWorker(edges)) { $0.pointLeft() }
         
         myIterations += 1
         
         return edges.withUnsafeBufferPointer { buffer in
             for e in buffer {
-                guard let msgDiff = e.msgDiff else { return false }
-                if msgDiff > convergenceThresh {
-                    return false
+                if e.isEnabled {
+                    guard let msgDiff = e.msgDiff else { return false }
+                    if msgDiff > convergenceThresh {
+                        return false
+                    }
                 }
             }
             

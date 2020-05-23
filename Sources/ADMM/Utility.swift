@@ -1,32 +1,12 @@
 import Foundation
 
-// Allows objects to be used in sets/dictionaries
-// via their address
-class ObjectWrapper<T>: Equatable, Hashable {
-    private let obj: T
-    
-    var wrapped: T { obj }
-    
-    init(_ obj: T) {
-        self.obj = obj
-    }
-    
-    static func == (lhs: ObjectWrapper, rhs: ObjectWrapper) -> Bool {
-        return (lhs.obj as AnyObject) === (rhs.obj as AnyObject)
-    }
-    
-    func hash(into hasher: inout Hasher) {
-        // Use the instance's unique identifier for hashing
-        hasher.combine(ObjectIdentifier(obj as AnyObject))
-    }
-}
-
-//
-
+/// Given an array, produce a function that operates on each element of that array
 typealias ArrayForWorker<T> = (Array<T>) -> ((T) -> Void) -> Void
 
-// Concurrent/Serial for-loops for any array
 extension Array {
+    /// Produce concurrent for-loop for an array
+    ///
+    /// - Parameter work: operation to perform on each element
     func concurrentFor(work: (Element) -> Void) {
         self.withUnsafeBufferPointer { buffer in
             DispatchQueue.concurrentPerform(iterations: buffer.count) { index in
@@ -35,6 +15,9 @@ extension Array {
         }
     }
     
+    /// Produce serial for-loop for an array
+    ///
+    /// - Parameter work: operation to perform on each element
     func serialFor(work: (Element) -> Void) {
         self.withUnsafeBufferPointer { buffer in
             for item in buffer {
@@ -43,17 +26,26 @@ extension Array {
         }
     }
     
+    /// Produces a generic for-loop function to apply to an array
+    ///
+    /// - Parameter concurrent: if true, the function operates concurrently; else serially
+    /// - Returns: for-loop function for the array
     func getForWorker(_ concurrent: Bool) -> ArrayForWorker<Element> {
         return concurrent ? Array<Element>.concurrentFor : Array<Element>.serialFor
     }
 }
 
-// Quick range-makers
 public extension Int {
+    /// Produces a range given an integer as an upper bound
+    ///
+    /// - Returns: [0, value]
     func upToIncluding() -> ClosedRange<Int> {
         return 0...self
     }
     
+    /// Produces a range given an integer as an upper bound
+    ///
+    /// - Returns: [0, value)
     func upToExcluding() -> Range<Int> {
         return 0..<self
     }

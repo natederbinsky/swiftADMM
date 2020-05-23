@@ -6,49 +6,50 @@ final class ADMMTests: XCTestCase {
     func testWeightsADMM() {
         var testWeight = ADMMWeightData()
         
-        testWeight.weightToLeft = Double.zero
-        testWeight.weightToRight = Double.zero
+        testWeight.weightToLeft = .zero
+        testWeight.weightToRight = .zero
         
-        XCTAssertEqual(testWeight.weightToLeft, Edge.STANDARD)
-        XCTAssertEqual(testWeight.weightToRight, Edge.STANDARD)
+        XCTAssertEqual(testWeight.weightToLeft, .std)
+        XCTAssertEqual(testWeight.weightToRight, .std)
         
-        testWeight.weightToLeft = Double.infinity
-        testWeight.weightToRight = Double.infinity
+        testWeight.weightToLeft = .inf
+        testWeight.weightToRight = .inf
         
-        XCTAssertEqual(testWeight.weightToLeft, Edge.STANDARD)
-        XCTAssertEqual(testWeight.weightToRight, Edge.STANDARD)
+        XCTAssertEqual(testWeight.weightToLeft, .std)
+        XCTAssertEqual(testWeight.weightToRight, .std)
         
-        testWeight.weightToLeft = Edge.STANDARD
-        testWeight.weightToRight = Edge.STANDARD
+        testWeight.weightToLeft = .std
+        testWeight.weightToRight = .std
         
-        XCTAssertEqual(testWeight.weightToLeft, Edge.STANDARD)
-        XCTAssertEqual(testWeight.weightToRight, Edge.STANDARD)
+        XCTAssertEqual(testWeight.weightToLeft, .std)
+        XCTAssertEqual(testWeight.weightToRight, .std)
     }
     
     func testWeightsTWA() {
         var testWeight = TWAWeightData()
         
-        testWeight.weightToLeft = Double.zero
-        testWeight.weightToRight = Double.zero
+        testWeight.weightToLeft = .zero
+        testWeight.weightToRight = .zero
         
-        XCTAssert(testWeight.weightToLeft.isZero)
-        XCTAssert(testWeight.weightToRight.isZero)
+        XCTAssertEqual(testWeight.weightToLeft, .zero)
+        XCTAssertEqual(testWeight.weightToRight, .zero)
         
-        testWeight.weightToLeft = Double.infinity
-        testWeight.weightToRight = Double.infinity
+        testWeight.weightToLeft = .inf
+        testWeight.weightToRight = .inf
         
-        XCTAssert(testWeight.weightToLeft.isInfinite)
-        XCTAssert(testWeight.weightToRight.isInfinite)
+        XCTAssertEqual(testWeight.weightToLeft, .inf)
+        XCTAssertEqual(testWeight.weightToRight, .inf)
         
-        testWeight.weightToLeft = Edge.STANDARD
-        testWeight.weightToRight = Edge.STANDARD
+        testWeight.weightToLeft = .std
+        testWeight.weightToRight = .std
         
-        XCTAssertEqual(testWeight.weightToLeft, Edge.STANDARD)
-        XCTAssertEqual(testWeight.weightToRight, Edge.STANDARD)
+        XCTAssertEqual(testWeight.weightToLeft, .std)
+        XCTAssertEqual(testWeight.weightToRight, .std)
     }
     
     func testMessages() {
-        let testEdge = Edge(initialValue: 5.0, initialWeight: .std, twa: false, alpha: 0.1)
+        let constraint = EqualValueConstraint(twa: false)
+        let testEdge = Edge(right: constraint, twa: false, initialAlpha: 0.1, initialValue: 5.0, initialWeight: .std)
         
         XCTAssertEqual(testEdge.z, 5.0)
         XCTAssertEqual(testEdge.msg, 5.0)

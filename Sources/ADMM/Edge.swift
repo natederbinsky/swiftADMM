@@ -1,142 +1,199 @@
-
-enum Direction {
-    case left
-    case right
-}
-
-protocol WeightData {
-    var weightToLeft: Double { get set }
-    var weightToRight: Double { get set }
-}
-
-struct ADMMWeightData: WeightData {
-    var weightToLeft: Double {
-        get { return Edge.STANDARD }
-        set {}
-    }
-    
-    var weightToRight: Double {
-        get { return Edge.STANDARD }
-        set {}
-    }
-}
-
-struct TWAWeightData: WeightData {
-    var weightToLeft: Double = 0.0
-    var weightToRight: Double = 0.0
-}
-
+/// Message-weight options
 public enum ResultWeight {
+    /// Zero weight (no information)
     case zero
+    
+    /// Infinite weight (certainty)
     case inf
+    
+    /// Standard weight
     case std
     
-    fileprivate var value: Double {
+    /// Numerical value of the weight
+    public var value: Double {
         switch self {
         case .zero:
             return Double.zero
         case .inf:
             return Double.infinity
         case .std:
-            return Edge.STANDARD
+            return 1.0
         }
     }
 }
 
-private extension Double {
-    var toResultWeight: ResultWeight {
-        get {
-            if self.isZero {
-                return .zero
-            } else if self.isInfinite {
-                return .inf
-            } else {
-                return .std
-            }
-        }
+/// Abstraction over bidirectional weights
+/// to avoid extra space/time for ADMM
+protocol WeightData {
+    /// Weight of message sent to factors
+    var weightToLeft: ResultWeight { get set }
+    
+    /// Weight of message sent to variables
+    var weightToRight: ResultWeight { get set }
+}
+
+/// ADMM implementation always uses standard weight
+struct ADMMWeightData: WeightData {
+    var weightToLeft: ResultWeight {
+        get { .std }
+        set {}
+    }
+    
+    var weightToRight: ResultWeight {
+        get { .std }
+        set {}
     }
 }
 
+/// TWA implementation uses any of three values
+struct TWAWeightData: WeightData {
+    var weightToLeft: ResultWeight = .zero
+    var weightToRight: ResultWeight = .zero
+}
+
+/// Indicates the side of
+/// the bipartite graph that
+/// is being operated on
+enum Direction {
+    /// Processing factors
+    case left
+    
+    /// Processing variables
+    case right
+}
+
+/// Facilitates access to edge information within
+/// an executing problem graph
 public class Edge {
-    static let STANDARD = 1.0
+    /// Reference to object maintaining equal values
+    /// across edges after right
+    private let right: EqualValueConstraint
     
-    //
+    // *********************************************
     
+    /// Learning rate for this edge
     var alpha: Double
     
-    //
+    /// Dictates whether this edge is enabled
+    private var enabled: Bool = true
     
+    /// Is this edge enabled?
+    public var isEnabled: Bool {
+        enabled
+    }
+    
+    // *********************************************
+    
+    /// Value set by the left
     private var x: Double = 0.0
+    
+    /// Value set by the right
     var z: Double = 0.0
+    
+    /// Cumulative value difference
     private var u: Double = 0.0
     
+    /// Weights associated with left/right messages
     private var weights: WeightData
     
+    /// Current direction of processing
     private var dir: Direction = .left
     
+    /// Last message value from left
     private var oldMsg: Double? = nil
-    private var oldNewDiff: Double? = nil
     
-    //
+    /// Message delta from left over the last two iterations
+    var msgDiff: Double? = nil
     
-    init(initialValue: Double, initialWeight: ResultWeight, twa: Bool, alpha: Double) {
-        self.alpha = alpha
+    // *********************************************
+    
+    /// Construct a new problem-graph edge
+    ///
+    /// - Parameters:
+    ///   - right: associated variable constraint
+    ///   - twa: should this edge implement the three-weight algorithm?
+    ///   - initialAlpha: initial learning rate
+    ///   - initialValue: initial z value
+    ///   - initialWeight: initial weight message
+    init(right: EqualValueConstraint, twa: Bool, initialAlpha: Double, initialValue: Double, initialWeight: ResultWeight) {
+        self.right = right
+        
+        self.alpha = initialAlpha
         weights = twa ? TWAWeightData() : ADMMWeightData()
         
         reset(initialValue, initialWeight)
     }
     
+    /// Reset the edge
+    /// - Parameters:
+    ///   - initialZ: initial value
+    ///   - initialWeight: initial weight
     func reset(_ initialZ: Double, _ initialWeight: ResultWeight) {
+        enabled = true
+        
         x = 0.0
         u = 0.0
         z = initialZ
         
-        weights.weightToLeft = initialWeight.value
-        weights.weightToRight = 0.0
+        weights.weightToLeft = initialWeight
+        weights.weightToRight = .zero
         
         dir = .left
         
         oldMsg = nil
-        oldNewDiff = nil
+        msgDiff = nil
     }
     
+    /// Enable the edge
+    func enable() {
+        reset(right.value!, .std)
+        right.forceEdgeRefresh()
+    }
+    
+    /// Disable the edge
+    func disable() {
+        enabled = false
+        right.forceEdgeRefresh()
+    }
+    
+    /// Prepare the edge for factor-side processing
     func pointLeft() {
         dir = .left
         
-        if weights.weightToLeft.isInfinite {
+        if weights.weightToLeft == .inf {
             u = 0.0
         } else {
             u += alpha * (x - z)
         }
     }
     
+    /// Prepare the edge for variable-side processing
     func pointRight() {
         if let oldMsg = oldMsg {
-            oldNewDiff = abs(msg - oldMsg)
+            msgDiff = abs(msg - oldMsg)
         }
         oldMsg = msg
         
         dir = .right
         
-        if weights.weightToRight.isInfinite {
+        if weights.weightToRight == .inf {
             u = 0.0
         }
     }
     
+    /// Computes the message to the right
     private var m: Double {
         return x + u
     }
     
+    /// Computes the message to the left
     private var n: Double {
         return z - u
     }
     
-    var msgDiff: Double? {
-        return oldNewDiff
-    }
+    // *********************************************
     
-    //
-    
+    /// Current message
     public var msg: Double {
         switch dir {
             
@@ -147,26 +204,32 @@ public class Edge {
         }
     }
     
+    /// Weight of the current message
     public var weight: ResultWeight {
         switch dir {
 
         case .left:
-            return weights.weightToLeft.toResultWeight
+            return weights.weightToLeft
         case .right:
-            return weights.weightToRight.toResultWeight
+            return weights.weightToRight
         }
     }
     
+    /// Sets the current value and weight
+    ///
+    /// - Parameters:
+    ///   - val: value to set
+    ///   - weight: weight of the message to set
     public func setResult(_ val: Double, weight: ResultWeight = .std) {
         switch dir {
             
         case .left:
             x = val
-            weights.weightToRight = weight.value
+            weights.weightToRight = weight
             
         case .right:
             z = val
-            weights.weightToLeft = weight.value
+            weights.weightToLeft = weight
         }
     }
 }
