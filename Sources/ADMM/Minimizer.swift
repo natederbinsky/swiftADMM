@@ -2,7 +2,7 @@
 /// that minimizes a local objective and can retrieve
 /// its associated factor node in a problem graph
 public protocol Minimizer: AnyObject {
-    /// Minimize ${argmin}_x f(x) + \frac{{weight}}{2}(x - {msg})^2$
+    /// Compute ${argmin}_x f(x) + \frac{{weight}}{2}(x - {msg})^2$
     func minimize() -> Void
     
     /// Retrieves the associated factor node in the problem graph

@@ -23,16 +23,26 @@ public class SpyMinimizer: Minimizer {
     /// Create the Spy
     ///
     /// - Parameters:
+    ///   - factor: associated factor node
     ///   - variable: node upon which to "spy"
     ///   - valueFunc: function that dictates when and how to affect the variable
-    public init(variable: Variable, valueFunc: @escaping SingleVarFunc) {
-        self.factor = variable.problem.addFactor()
+    public init(factor: Factor, variable: Variable, valueFunc: @escaping SingleVarFunc) {
+        self.factor = factor
         edge = variable.createEdge()
         f = valueFunc
         
         //
         
         connectEdge(edge)
+    }
+    
+    /// Create the Spy with a new factor node
+    ///
+    /// - Parameters:
+    ///   - variable: node upon which to "spy"
+    ///   - valueFunc: function that dictates when and how to affect the variable
+    public convenience init(variable: Variable, valueFunc: @escaping SingleVarFunc) {
+        self.init(factor: variable.problem.addFactor(), variable: variable, valueFunc: valueFunc)
     }
     
     /// Calls the spy's value function and passes through the
