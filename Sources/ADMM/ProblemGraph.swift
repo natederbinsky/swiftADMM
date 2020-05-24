@@ -120,8 +120,8 @@ public class ProblemGraph {
     ///
     /// - Important: all variables are reset to initial value/weights; iterations set to 0; convergence bit flipped; factors enabled
     public func reinitialize() {
-        for (i, eqMinimizer) in right.enumerated() {
-            eqMinimizer.reset(variablesInitValue[i], variablesInitWeight[i])
+        for (i, eqConstraint) in right.enumerated() {
+            eqConstraint.reset(variablesInitValue[i], variablesInitWeight[i])
         }
         
         left.forEach { $0.reset() }
@@ -138,7 +138,7 @@ public class ProblemGraph {
     ///
     /// - Returns: newly created variable node (used to create edges)
     public func addVariable(_ initValue: Double, _ initWeight: ResultWeight = .std) -> Variable {
-        right.append(EqualValueConstraint(twa: twa))
+        right.append(EqualValueConstraint(twa: twa, initialZ: initValue))
         variablesInitValue.append(initValue)
         variablesInitWeight.append(initWeight)
         
@@ -160,11 +160,7 @@ public class ProblemGraph {
     /// - Parameter variable: index of the variable
     /// - Returns: current value of the variable (or initial value)
     func variableValue(variable: Int) -> Double {
-        if let rtVal = right[variable].value {
-            return rtVal
-        } else {
-            return variablesInitValue[variable]
-        }
+        return right[variable].value
     }
     
     /// Adds an edge to a variable

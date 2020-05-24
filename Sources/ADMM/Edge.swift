@@ -146,7 +146,7 @@ public class Edge {
     
     /// Enable the edge
     func enable() {
-        reset(right.value!, .std)
+        reset(right.value, .std)
         right.forceEdgeRefresh()
     }
     

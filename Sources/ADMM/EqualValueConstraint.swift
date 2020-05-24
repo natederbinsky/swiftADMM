@@ -10,13 +10,16 @@ public class EqualValueConstraint {
     /// Subset of edges that are currently enabled
     private var enabledEdges = [Edge]()
     
+    /// Last valid value
+    private var lastZ: Double
+    
     /// Flag to update enabled edges before next
     /// opportunity to enforce equality
     private var needEdgeRefresh = true
     
     /// Value output after the most recent equality enforcement
-    public var value: Double? {
-        enabledEdges.isEmpty ? nil: enabledEdges[0].z
+    public var value: Double {
+        enabledEdges.isEmpty ? lastZ: enabledEdges[0].z
     }
     
     // *********************************************
@@ -24,8 +27,10 @@ public class EqualValueConstraint {
     /// Create an equality constraint
     ///
     /// - Parameter twa: should non-standard weights be considered?
-    public init(twa: Bool) {
+    /// - Parameter initialZ: initial value
+    public init(twa: Bool, initialZ: Double) {
         _enforce = twa ? EqualValueConstraint._enforceTWA : EqualValueConstraint._enforceADMM
+        lastZ = initialZ
     }
     
     /// Adds an edge to the constraint
@@ -51,7 +56,10 @@ public class EqualValueConstraint {
             needEdgeRefresh = false
         }
         
-        _enforce(enabledEdges)
+        if !enabledEdges.isEmpty {
+            _enforce(enabledEdges)
+            lastZ = enabledEdges[0].z
+        }
     }
     
     /// Resets all edges and forces edge refresh
@@ -61,6 +69,7 @@ public class EqualValueConstraint {
     ///   - initialWeight: message weight set for each edge
     func reset(_ initialZ: Double, _ initialWeight: ResultWeight) {
         edges.forEach { $0.reset(initialZ, initialWeight) }
+        lastZ = initialZ
         needEdgeRefresh = true
     }
     
