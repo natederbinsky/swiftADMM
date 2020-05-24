@@ -1,9 +1,9 @@
 import Foundation
 
 /// Given an array, produce a function that operates on each element of that array
-typealias ArrayForWorker<T> = (Array<T>) -> ((T) -> Void) -> Void
+public typealias ArrayForWorker<T> = (Array<T>) -> ((T) -> Void) -> Void
 
-extension Array {
+public extension Array {
     /// Produce concurrent for-loop for an array
     ///
     /// - Parameter work: operation to perform on each element
