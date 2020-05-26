@@ -2,13 +2,13 @@
 /// the same value (as dictated by supplied weights)
 public class EqualValueConstraint {
     /// Edges over which to enforce equality
-    private var edges = [Edge]()
+    private var edges = ContiguousArray<Edge>()
     
     /// Algorithm-specific enforcement function
-    private let _enforce: ([Edge]) -> Void
+    private let _enforce: (ContiguousArray<Edge>) -> Void
     
     /// Subset of edges that are currently enabled
-    private var enabledEdges = [Edge]()
+    private var enabledEdges = ContiguousArray<Edge>()
     
     /// Last valid value
     private var lastZ: Double
@@ -82,9 +82,10 @@ public class EqualValueConstraint {
     /// - Parameter edgesToInclude: edges to consider in the average
     /// - Returns: average of supplied edges
     /// - Precondition: `edgesToInclude` must be non-empty
-    private static func _msgAvg(_ edgesToInclude: [Edge]) -> Double {
-        let sum = edgesToInclude.reduce(0) { (result, element) in
-            return result + element.msg
+    @inline(__always) private static func _msgAvg<T: Collection>(_ edgesToInclude: T) -> Double where T.Element == Edge {
+        var sum = 0.0
+        for e in edgesToInclude {
+            sum += e.msg
         }
         
         return sum / Double(edgesToInclude.count)
@@ -98,7 +99,7 @@ public class EqualValueConstraint {
     /// - Multiple infinity (don't agree): crash
     ///
     /// - Parameter edges: the edges to consider
-    private static func _enforceTWA(edges: [Edge]) {
+    private static func _enforceTWA(edges: ContiguousArray<Edge>) {
         let infEdges = edges.filter { $0.weight == .inf }
         
         var newVal = 0.0
@@ -116,12 +117,11 @@ public class EqualValueConstraint {
             newVal = infEdges[0].msg
             newWeight = .inf
         } else {
-            let agreement = infEdges[1...].reduce(Double?(infEdges[0].msg)) {
-                result, edge in
-                if let prevMsg = result {
-                    return (prevMsg == edge.msg) ? edge.msg : nil
-                } else {
-                    return nil
+            var agreement: Double? = infEdges[0].msg
+            for edge in infEdges[1...] {
+                if edge.msg != agreement {
+                    agreement = nil
+                    break
                 }
             }
             
@@ -147,7 +147,7 @@ public class EqualValueConstraint {
     /// Enforces equal output value given single-weight paradigm
     ///
     /// Output value is just average of incoming messages
-    private static func _enforceADMM(edges: [Edge]) {
+    private static func _enforceADMM(edges: ContiguousArray<Edge>) {
         let newZ = _msgAvg(edges)
         
         for edge in edges {

@@ -35,6 +35,41 @@ public extension Array {
     }
 }
 
+/// Given a contiguous array, produce a function that operates on each element of that array
+public typealias ContiguousArrayForWorker<T> = (ContiguousArray<T>) -> ((T) -> Void) -> Void
+
+public extension ContiguousArray {
+    /// Produce concurrent for-loop for an array
+    ///
+    /// - Parameter work: operation to perform on each element
+    func concurrentFor(work: (Element) -> Void) {
+        self.withUnsafeBufferPointer { buffer in
+            DispatchQueue.concurrentPerform(iterations: buffer.count) { index in
+                work(buffer[index])
+            }
+        }
+    }
+    
+    /// Produce serial for-loop for an array
+    ///
+    /// - Parameter work: operation to perform on each element
+    func serialFor(work: (Element) -> Void) {
+        self.withUnsafeBufferPointer { buffer in
+            for item in buffer {
+                work(item)
+            }
+        }
+    }
+    
+    /// Produces a generic for-loop function to apply to an array
+    ///
+    /// - Parameter concurrent: if true, the function operates concurrently; else serially
+    /// - Returns: for-loop function for the array
+    func getForWorker(_ concurrent: Bool) -> ContiguousArrayForWorker<Element> {
+        return concurrent ? ContiguousArray<Element>.concurrentFor : ContiguousArray<Element>.serialFor
+    }
+}
+
 public extension Int {
     /// Produces a range given an integer as an upper bound
     ///

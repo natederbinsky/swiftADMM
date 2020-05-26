@@ -73,23 +73,23 @@ public class ProblemGraph {
     // *********************************************
     
     /// Collection of all edges
-    private var edges = [Edge]()
+    private var edges = ContiguousArray<Edge>()
     
     /// Collection of all factors
-    private var left = [Factor]()
+    private var left = ContiguousArray<Factor>()
     
     /// Collection of all variables
     /// (or, truly, collections of edges related to each variable)
-    private var right = [EqualValueConstraint]()
+    private var right = ContiguousArray<EqualValueConstraint>()
     
     /// Iteration over edges
-    private let edgeWorker: ArrayForWorker<Edge>
+    private let edgeWorker: ContiguousArrayForWorker<Edge>
     
     /// Iteration over factors
-    private let leftWorker: ArrayForWorker<Factor>
+    private let leftWorker: ContiguousArrayForWorker<Factor>
     
     /// Iteration over variables
-    private let rightWorker: ArrayForWorker<EqualValueConstraint>
+    private let rightWorker: ContiguousArrayForWorker<EqualValueConstraint>
     
     /// Values to initialize edges initially and after reinitialization
     private var variablesInitValue = [Double]()
