@@ -13,9 +13,8 @@ public class EqualValueConstraint {
     /// Last valid value
     private var lastZ: Double
     
-    /// Flag to update enabled edges before next
-    /// opportunity to enforce equality
-    private var needEdgeRefresh = true
+    // Should the enabledEdges be checked for disabled edges?
+    private var clearDisabled = false
     
     /// Value output after the most recent equality enforcement
     public var value: Double {
@@ -38,22 +37,24 @@ public class EqualValueConstraint {
     /// - Parameter edge: edge to be added for equality enforcement
     public func addEdge(_ edge: Edge) {
         edges.append(edge)
-        needEdgeRefresh = true
+        if edge.isEnabled {
+            enabledEdges.append(edge)
+        }
     }
     
-    /// Indicates that before next enforcement, the set of enabled
-    /// edges should be reconsidered
-    ///
-    /// - Important: This happens automatically when a new edge is added
-    public func forceEdgeRefresh() {
-        needEdgeRefresh = true
+    public func addEnabled(_ edge: Edge) {
+        enabledEdges.append(edge)
+    }
+    
+    public func clearDisabledEdges() {
+        clearDisabled = true
     }
     
     /// Enforces the equality constraint
     public func enforce() {
-        if needEdgeRefresh {
-            enabledEdges = edges.filter { $0.isEnabled }
-            needEdgeRefresh = false
+        if clearDisabled {
+            enabledEdges = enabledEdges.filter { $0.isEnabled }
+            clearDisabled = false
         }
         
         if !enabledEdges.isEmpty {
@@ -69,8 +70,9 @@ public class EqualValueConstraint {
     ///   - initialWeight: message weight set for each edge
     func reset(_ initialZ: Double, _ initialWeight: ResultWeight) {
         edges.forEach { $0.reset(initialZ, initialWeight) }
+        enabledEdges = edges
+        clearDisabled = false
         lastZ = initialZ
-        needEdgeRefresh = true
     }
     
     // *********************************************

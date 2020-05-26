@@ -147,13 +147,13 @@ public class Edge {
     /// Enable the edge
     func enable() {
         reset(right.value, .std)
-        right.forceEdgeRefresh()
+        right.addEnabled(self)
     }
     
     /// Disable the edge
     func disable() {
         enabled = false
-        right.forceEdgeRefresh()
+        right.clearDisabledEdges()
     }
     
     /// Prepare the edge for factor-side processing
