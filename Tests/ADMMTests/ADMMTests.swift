@@ -48,7 +48,7 @@ final class ADMMTests: XCTestCase {
     }
     
     func testMessages() {
-        let constraint = EqualValueConstraint(twa: false)
+        let constraint = EqualValueConstraint(twa: false, initialZ: 5.0)
         let testEdge = Edge(right: constraint, twa: false, initialAlpha: 0.1, initialValue: 5.0, initialWeight: .std)
         
         XCTAssertEqual(testEdge.z, 5.0)
