@@ -18,7 +18,7 @@ public class EqualValueConstraint {
     
     /// Value output after the most recent equality enforcement
     public var value: Double {
-        enabledEdges.isEmpty ? lastZ: enabledEdges[0].z
+        lastZ
     }
     
     // *********************************************
