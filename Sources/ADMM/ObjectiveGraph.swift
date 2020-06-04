@@ -80,6 +80,8 @@ public class ObjectiveGraph {
     private var variables = ContiguousArray<VariableData>()
     private var edges = ContiguousArray<EdgeData>()
     
+    private var enabledFactors = Set<Int>()
+    
     //
     
     public var numEdges: Int {
@@ -95,7 +97,7 @@ public class ObjectiveGraph {
     }
     
     public var numEnabledFactors: Int {
-        (factors.filter { $0.enabled }).count
+        enabledFactors.count
     }
     
     public var numVariables: Int {
@@ -129,7 +131,9 @@ public class ObjectiveGraph {
     }
     
     public func getValue(_ variable: VariableNode) -> Double {
-        return variables[variable.variableIndex].value
+        variables.withUnsafeBufferPointer { vBuffer in
+            return vBuffer[variable.variableIndex].value
+        }
     }
     
     // ########################################################
@@ -140,6 +144,7 @@ public class ObjectiveGraph {
         let index = factors.count
         
         factors.append(FactorData(edges: edges.map { $0.edgeIndex }, f: minimizationFunc))
+        enabledFactors.insert(index)
         
         return FactorNode(index: index)
     }
@@ -151,13 +156,15 @@ public class ObjectiveGraph {
     func enableFactor(_ factorIndex: Int) {
         factors.withUnsafeMutableBufferPointer { fBuffer in
             if fBuffer[factorIndex].enable() {
+                enabledFactors.insert(factorIndex)
+                
                 edges.withUnsafeMutableBufferPointer { eBuffer in
                     variables.withUnsafeMutableBufferPointer { vBuffer in
                         fBuffer[factorIndex].edges.withUnsafeBufferPointer { feBuffer in
                             for fEdge in feBuffer {
                                 let varIndex = eBuffer[fEdge.edgeIndex].varIndex
                                 
-                                eBuffer[fEdge.edgeIndex].reset(initInfo: vBuffer[varIndex].initInfo)
+                                eBuffer[fEdge.edgeIndex].reset(initInfo: (value: vBuffer[varIndex].value, weight: .std))
                                 vBuffer[varIndex].addEnabledEdge(edgeIndex: fEdge.edgeIndex)
                             }
                         }
@@ -170,6 +177,8 @@ public class ObjectiveGraph {
     func disableFactor(_ factorIndex: Int) {
         factors.withUnsafeMutableBufferPointer { fBuffer in
             if fBuffer[factorIndex].disable() {
+                enabledFactors.remove(factorIndex)
+                
                 edges.withUnsafeMutableBufferPointer { eBuffer in
                     variables.withUnsafeMutableBufferPointer { vBuffer in
                         fBuffer[factorIndex].edges.withUnsafeBufferPointer { feBuffer in
@@ -217,9 +226,17 @@ public class ObjectiveGraph {
         // Variable: update enabled list (if necessary)
         do {
             if variablesBuffer[varIndex].enabledNeedsUpdate {
+                var newEnabled = ContiguousArray<Int>()
+                
                 variablesBuffer[varIndex].enabledEdges.withUnsafeBufferPointer { eiBuffer in
-                    variablesBuffer[varIndex].updateEnabledEdges(newEnabled: ContiguousArray<Int>(eiBuffer.filter { edgesBuffer[$0].enabled }))
+                    for enabledEdgeIndex in eiBuffer {
+                        if edgesBuffer[enabledEdgeIndex].enabled {
+                            newEnabled.append(enabledEdgeIndex)
+                        }
+                    }
                 }
+                
+                variablesBuffer[varIndex].updateEnabledEdges(newEnabled: newEnabled)
             }
         }
         
@@ -249,6 +266,22 @@ public class ObjectiveGraph {
         }
     }
     
+    private static func _iterateLeftEnabledSerial(_ fBuffer: UnsafeMutableBufferPointer<FactorData>, _ eBuffer: UnsafeMutableBufferPointer<EdgeData>, _ enabledFactors: Set<Int>) {
+        for fIndex in enabledFactors {
+            ObjectiveGraph._doLeft(fBuffer, eBuffer, fIndex)
+        }
+    }
+    
+    private static func _iterateLeftEnabledConcurrent(_ fBuffer: UnsafeMutableBufferPointer<FactorData>, _ eBuffer: UnsafeMutableBufferPointer<EdgeData>, _ enabledFactors: Set<Int>) {
+        let fastEnabledFactors = ContiguousArray<Int>(enabledFactors)
+
+        fastEnabledFactors.withUnsafeBufferPointer { fastBuffer in
+            DispatchQueue.concurrentPerform(iterations: fastBuffer.count) { i in
+                ObjectiveGraph._doLeft(fBuffer, eBuffer, fastBuffer[i])
+            }
+        }
+    }
+    
     private static func _iterateRightSerial(_ vBuffer: UnsafeMutableBufferPointer<VariableData>, _ eBuffer: UnsafeMutableBufferPointer<EdgeData>, _ varEqualityFn: VariableEqualityFunction, _ learningRate: Double) {
         for i in 0..<vBuffer.count {
             ObjectiveGraph._doRight(vBuffer, eBuffer, varEqualityFn, learningRate, i)
@@ -266,6 +299,7 @@ public class ObjectiveGraph {
     private let _varEqualityFn: VariableEqualityFunction
     
     private let _iterateLeftFn: (UnsafeMutableBufferPointer<FactorData>, UnsafeMutableBufferPointer<EdgeData>) -> Void
+    private let _iterateLeftEnabledFn: (UnsafeMutableBufferPointer<FactorData>, UnsafeMutableBufferPointer<EdgeData>, Set<Int>) -> Void
     private let _iterateRightFn: (UnsafeMutableBufferPointer<VariableData>, UnsafeMutableBufferPointer<EdgeData>, VariableEqualityFunction, Double) -> Void
     
     public init(algorithm: Algorithm, learningRate alpha: Double, convergenceDelta: Double = 1e-5, concurrent: Bool = true) {
@@ -280,9 +314,11 @@ public class ObjectiveGraph {
         
         if concurrent {
             _iterateLeftFn = ObjectiveGraph._iterateLeftConcurrent
+            _iterateLeftEnabledFn = ObjectiveGraph._iterateLeftEnabledConcurrent
             _iterateRightFn = ObjectiveGraph._iterateRightConcurrent
         } else {
             _iterateLeftFn = ObjectiveGraph._iterateLeftSerial
+            _iterateLeftEnabledFn = ObjectiveGraph._iterateLeftEnabledSerial
             _iterateRightFn = ObjectiveGraph._iterateRightSerial
         }
     }
@@ -307,6 +343,7 @@ public class ObjectiveGraph {
                 fBuffer[fi].reset()
             }
         }
+        enabledFactors = Set<Int>(0..<factors.count)
         
         myIterations = 0
         myConverged = false
@@ -317,7 +354,12 @@ public class ObjectiveGraph {
         
         return edges.withUnsafeMutableBufferPointer { eBuffer in
             factors.withUnsafeMutableBufferPointer { fBuffer in
-                _iterateLeftFn(fBuffer, eBuffer)
+                let enabledProp = Double(enabledFactors.count) / Double(fBuffer.count)
+                if enabledProp < 0.15 {
+                    _iterateLeftEnabledFn(fBuffer, eBuffer, enabledFactors)
+                } else {
+                    _iterateLeftFn(fBuffer, eBuffer)
+                }
             }
                 
             variables.withUnsafeMutableBufferPointer { vBuffer in
