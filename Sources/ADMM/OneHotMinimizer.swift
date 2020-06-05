@@ -147,7 +147,7 @@ private func _zero(_ weightedMessages: UnsafeMutableBufferPointer<WeightedValueE
     }
 }
 
-public func createOneHotFactor(objective obj: ObjectiveGraph, vars: [VariableNode]) -> FactorNode {
+public func createOneHotFactor<T: Sequence>(objective obj: ObjectiveGraph, vars: T) -> FactorNode where T.Element == VariableNode {
     let edges = vars.map { obj.createEdge($0) }
     let f: MinimizationFunction
     
@@ -171,7 +171,7 @@ public func createOneHotFactor(objective obj: ObjectiveGraph, vars: [VariableNod
             weightedMessages[biggestIndex].set((value: 1.0, weight: .std))
         }
     } else {
-        let infZeroMagic = vars.count - 1
+        let infZeroMagic = edges.count - 1
         
         f = {
             weightedMessages in
