@@ -57,7 +57,7 @@ extension Algorithm {
 
 public class ObjectiveGraph {
     public let algorithm: Algorithm
-    public let convergenceDelta: Double
+    public var convergenceDelta: Double
     public let concurrent: Bool
     
     //
