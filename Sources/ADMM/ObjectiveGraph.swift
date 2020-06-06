@@ -7,7 +7,7 @@ public enum Algorithm {
 
 typealias VariableEqualityFunction = (UnsafeBufferPointer<Int>, UnsafeBufferPointer<EdgeData>) -> WeightedValue
 
-func _varEqualityADMM(_ edgeIndexes: UnsafeBufferPointer<Int>, _ edgesBuffer: UnsafeBufferPointer<EdgeData>) -> WeightedValue {
+private func _varEqualityADMM(_ edgeIndexes: UnsafeBufferPointer<Int>, _ edgesBuffer: UnsafeBufferPointer<EdgeData>) -> WeightedValue {
     var sum = 0.0
     for edgeIndex in edgeIndexes {
         sum += edgesBuffer[edgeIndex].weightedMessageToVariable.value
@@ -16,7 +16,7 @@ func _varEqualityADMM(_ edgeIndexes: UnsafeBufferPointer<Int>, _ edgesBuffer: Un
     return (value: sum / Double(edgeIndexes.count), weight: .std)
 }
 
-func _varEqualityTWA(_ edgeIndexes: UnsafeBufferPointer<Int>, _ edgesBuffer: UnsafeBufferPointer<EdgeData>) -> WeightedValue {
+private func _varEqualityTWA(_ edgeIndexes: UnsafeBufferPointer<Int>, _ edgesBuffer: UnsafeBufferPointer<EdgeData>) -> WeightedValue {
     
     var allSum = 0.0
     var nzSum = 0.0
