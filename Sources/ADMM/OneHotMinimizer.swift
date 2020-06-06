@@ -1,9 +1,21 @@
+/// Zeros out a set of values
+///
+/// - Parameter weightedMessages: destinations to zero-out
+/// - Parameter weight: weight to associate with each 0 value
 private func _zero(_ weightedMessages: UnsafeMutableBufferPointer<WeightedValueExchange>, weight: MessageWeight) {
     for i in 0..<weightedMessages.count {
         weightedMessages[i].set((value: 0.0, weight: weight))
     }
 }
 
+/// General-purpose factor implementing a one-hot
+/// constraint for a set of variables (i.e., some variable is 1, rest are 0)
+///
+/// - Parameters:
+///   - objective: associated objective graph
+///   - vars: variables over which to implement the constraint
+///
+/// - returns: factor node added to the objective graph
 public func createOneHotFactor<T: Sequence>(objective obj: ObjectiveGraph, vars: T) -> FactorNode where T.Element == VariableNode {
     let edges = vars.map { obj.createEdge($0) }
     let f: MinimizationFunction
