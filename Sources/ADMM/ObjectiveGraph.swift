@@ -130,10 +130,14 @@ public class ObjectiveGraph {
         return VariableNode(index: index)
     }
     
-    public func getValue(_ variable: VariableNode) -> Double {
+    public func getValueUnsafe(_ variable: VariableNode) -> Double {
         variables.withUnsafeBufferPointer { vBuffer in
             return vBuffer[variable.variableIndex].value
         }
+    }
+    
+    public subscript(variable: VariableNode) -> Double {
+        return variables[variable.variableIndex].value
     }
     
     // ########################################################
@@ -149,11 +153,21 @@ public class ObjectiveGraph {
         return FactorNode(index: index)
     }
     
-    public func getFactorStatus(_ factor: FactorNode) -> Bool {
-        return factors[factor.factorIndex].enabled
+    public subscript(factor: FactorNode) -> Bool {
+        get {
+            return factors[factor.factorIndex].enabled
+        }
+        
+        set {
+            if newValue {
+                enableFactor(factor.factorIndex)
+            } else {
+                disableFactor(factor.factorIndex)
+            }
+        }
     }
     
-    func enableFactor(_ factorIndex: Int) {
+    private func enableFactor(_ factorIndex: Int) {
         factors.withUnsafeMutableBufferPointer { fBuffer in
             if fBuffer[factorIndex].enable() {
                 enabledFactors.insert(factorIndex)
@@ -174,7 +188,7 @@ public class ObjectiveGraph {
         }
     }
     
-    func disableFactor(_ factorIndex: Int) {
+    private func disableFactor(_ factorIndex: Int) {
         factors.withUnsafeMutableBufferPointer { fBuffer in
             if fBuffer[factorIndex].disable() {
                 enabledFactors.remove(factorIndex)
@@ -192,14 +206,6 @@ public class ObjectiveGraph {
                     }
                 }
             }
-        }
-    }
-    
-    public func setFactorStatus(_ factor: FactorNode, _ newValue: Bool) {
-        if newValue {
-            enableFactor(factor.factorIndex)
-        } else {
-            disableFactor(factor.factorIndex)
         }
     }
     
