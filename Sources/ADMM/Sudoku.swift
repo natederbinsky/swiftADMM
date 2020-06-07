@@ -74,7 +74,6 @@ public class Sudoku {
     ///
     /// - returns: value at each cell of the Sudoku grid (0..<(innerSide^2))
     public static func extractState(objective obj: ObjectiveGraph, variables: ContiguousArray<ContiguousArray<VariableNode>>) -> [Int] {
-        
         variables.withUnsafeBufferPointer { vBuffer in
             return vBuffer.map {
                 var result = -1
