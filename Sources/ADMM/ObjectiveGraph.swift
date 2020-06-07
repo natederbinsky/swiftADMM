@@ -118,6 +118,12 @@ public class ObjectiveGraph {
     
     //
     
+    // All callbacks
+    private var callbackIterate = ContiguousArray<()->Void>()
+    private var callbackReinit = ContiguousArray<()->Void>()
+    
+    //
+    
     /// How many edges are in the graph?
     public var numEdges: Int {
         edges.count
@@ -446,7 +452,7 @@ public class ObjectiveGraph {
     public func iterate() -> Bool {
         guard !myConverged else { return true }
         
-        return edges.withUnsafeMutableBufferPointer { eBuffer in
+        let result: Bool = edges.withUnsafeMutableBufferPointer { eBuffer in
             factors.withUnsafeMutableBufferPointer { fBuffer in
                 let enabledProp = Double(enabledFactors.count) / Double(fBuffer.count)
                 if enabledProp < 0.15 {
@@ -474,6 +480,23 @@ public class ObjectiveGraph {
             myConverged = true
             return myConverged
         }
+        
+        //
+        
+        for f in callbackIterate {
+            f()
+        }
+        
+        return result
+    }
+    
+    /// Adds a function that is called *after* objective-graph iteration
+    ///
+    /// - Note: is not called if iteration is attempted on a converged graph
+    ///
+    /// - Parameter f: function to be called
+    public func addIterationCallback(_ f: @escaping ()->Void) {
+        callbackIterate.append(f)
     }
     
     // ########################################################
@@ -533,5 +556,18 @@ public class ObjectiveGraph {
         
         myIterations = 0
         myConverged = false
+        
+        //
+        
+        for f in callbackReinit {
+            f()
+        }
+    }
+    
+    /// Adds a function that is called *after* objective-graph reinitialization
+    ///
+    /// - Parameter f: function to be called
+    public func addReinitCallback(_ f: @escaping ()->Void) {
+        callbackReinit.append(f)
     }
 }
