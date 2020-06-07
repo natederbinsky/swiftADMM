@@ -1,4 +1,4 @@
-import Foundation
+import GameKit
 
 public class CirclePacking {
     /// Generates a list of circles (x, y, radius) based upon input criteria
@@ -198,5 +198,335 @@ public class CirclePacking {
         }
         
         return (variablesX: variablesX, variablesY: variablesY, paramsRadius: paramsRadius, intMinimizers: intMinimizers)
+    }
+    
+    private static func _newMax(old: Double?, new: Double) -> Double {
+        var contender = new
+        if new < 0 {
+            contender = 0.0
+        }
+        
+        if let maxSoFar = old {
+            if contender > maxSoFar {
+                return contender
+            } else {
+                return maxSoFar
+            }
+        } else {
+            return contender
+        }
+    }
+    
+    /// Computes the maximum constraint violation (boundary or intersection)
+    ///
+    /// - Parameters:
+    ///   - objective: objective graph
+    ///   - varsX: x-coordinate variables
+    ///   - varsY: y-coordinate variables
+    ///   - radii: radii of each circle
+    ///   - horizRange: legal horizontal span
+    ///   - vertRange: legal vertical span
+    ///
+    /// - returns: maximum overlap of any circle (min value is 0)
+    public static func maxOverlap(objective obj: ObjectiveGraph, varsX: ContiguousArray<VariableNode>, varsY: ContiguousArray<VariableNode>, radii: ContiguousArray<Double>, horizRange: ClosedRange<Double>, vertRange: ClosedRange<Double>) -> Double {
+        let circles = (0..<varsX.count).map { i in
+            (x: obj[varsX[i]], y: obj[varsY[i]], r: radii[i])
+        }
+        
+        var maxOverlap: Double? = nil
+        
+        for c in circles {
+            maxOverlap = _newMax(old: maxOverlap, new: horizRange.lowerBound - (c.x - c.r))
+            maxOverlap = _newMax(old: maxOverlap, new: (c.x + c.r) - horizRange.upperBound)
+            maxOverlap = _newMax(old: maxOverlap, new: vertRange.lowerBound - (c.y - c.r))
+            maxOverlap = _newMax(old: maxOverlap, new: (c.y + c.r) - vertRange.upperBound)
+        }
+        
+        for i1 in 0..<(circles.count - 1) {
+            let c1 = circles[i1]
+            
+            for i2 in (i1+1)..<circles.count {
+                let c2 = circles[i2]
+                
+                let xDiff = (c1.x - c2.x)
+                let yDiff = (c1.y - c2.y)
+                let dist = sqrt(xDiff*xDiff + yDiff*yDiff)
+                
+                let sumRadii = c1.r + c2.r
+                
+                let overlap = sumRadii - dist
+                
+                maxOverlap = _newMax(old: maxOverlap, new: overlap)
+            }
+        }
+        
+        return maxOverlap!
+    }
+    
+    @available(iOS 10.0, *)
+    @available(OSX 10.12, *)
+    public static func addToObjectiveFast(objective obj: ObjectiveGraph, circles: [(x: Double, y: Double, radius: Double)], rangeHorizontal: ClosedRange<Double>, rangeVertical: ClosedRange<Double>) -> (variablesX: ContiguousArray<VariableNode>, variablesY: ContiguousArray<VariableNode>, paramsRadius: ContiguousArray<Double>, intMinimizers: ContiguousArray<ContiguousArray<FactorNode>>) {
+        let result = addToObjective(objective: obj, circles: circles, rangeHorizontal: rangeHorizontal, rangeVertical: rangeVertical, kissing: nil)
+        
+        let _ = FastCirclePackingGraphManager(horizRange: rangeHorizontal, vertRange: rangeVertical, numCells: circles.count / 10, maxRadius: 1.4 * result.paramsRadius.max()!, obj: obj, variablesX: result.variablesX, variablesY: result.variablesY, intFactors: result.intMinimizers, paramsRadius: result.paramsRadius)
+        
+        return result
+    }
+}
+
+/// Uses a spatial data structure to dynamically enable/disable intersection
+/// factors in a circle-packing problem
+@available(iOS 10.0, *)
+@available(OSX 10.12, *)
+fileprivate class FastCirclePackingGraphManager {
+    private let quadtree: DeltaQuadTree
+    
+    private let obj: ObjectiveGraph
+    private let variablesX: ContiguousArray<VariableNode>
+    private let variablesY: ContiguousArray<VariableNode>
+    private let intFactors: ContiguousArray<ContiguousArray<FactorNode>>
+    
+    init(horizRange: ClosedRange<Double>, vertRange: ClosedRange<Double>, numCells: Int, maxRadius: Double, obj: ObjectiveGraph, variablesX: ContiguousArray<VariableNode>, variablesY: ContiguousArray<VariableNode>, intFactors: ContiguousArray<ContiguousArray<FactorNode>>, paramsRadius: ContiguousArray<Double>) {
+        quadtree = DeltaQuadTree(horizRange: horizRange, vertRange: vertRange, numCells: numCells, maxRadius: maxRadius)
+        
+        self.obj = obj
+        self.variablesX = variablesX
+        self.variablesY = variablesY
+        self.intFactors = intFactors
+        
+        /// Add objects to the spatial data structure
+        for i in variablesX.count.upToExcluding() {
+            quadtree.addObject(halfWidth: paramsRadius[i], x: obj[variablesX[i]], y: obj[variablesY[i]])
+        }
+        
+        /// Disable all intersection factors
+        disableIntersections()
+        
+        /// Add back only those that are needed
+        updateLocations()
+        
+        /// When the objective graph is re-initialized
+        /// so too should internal data structures
+        obj.addReinitCallback {
+            self.reinit()
+        }
+        
+        /// When an iteration occurs, update the
+        /// spatial data structure and enable/disable
+        /// associated factors
+        obj.addIterationCallback {
+            self.updateLocations()
+        }
+    }
+    
+    private func reinit() {
+        quadtree.reinit()
+        disableIntersections()
+        updateLocations()
+    }
+    
+    private func updateLocations() {
+        variablesX.withUnsafeBufferPointer { vXBuffer in
+            variablesY.withUnsafeBufferPointer { vYBuffer in
+                quadtree.moveAll {
+                    index in
+                    
+                    return (obj.getValueUnsafe(vXBuffer[index]), obj.getValueUnsafe(vYBuffer[index]))
+                }
+                updateIntersections()
+            }
+        }
+    }
+    
+    //
+    
+    private func disableIntersections() {
+        intFactors.withUnsafeBufferPointer { imBuffer in
+            for ms in imBuffer {
+                ms.withUnsafeBufferPointer { msBuffer in
+                    for m in msBuffer {
+                        obj[m] = false
+                    }
+                }
+            }
+        }
+    }
+    
+    private func updateIntersections() {
+        intFactors.withUnsafeBufferPointer { imBuffer in
+            quadtree.updateAll {
+                id, toAdd, toRemove in
+                
+                toAdd.withUnsafeBufferPointer { addBuffer in
+                    for idNode in addBuffer {
+                        updatePair(imBuffer, id1: id, id2: idNode.id, isEnabled: true)
+                    }
+                }
+                
+                toRemove.withUnsafeBufferPointer { removeBuffer in
+                    for idNode in removeBuffer {
+                        updatePair(imBuffer, id1: id, id2: idNode.id, isEnabled: false)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func updatePair(_ imBuffer: UnsafeBufferPointer<ContiguousArray<FactorNode>>, id1: Int, id2: Int, isEnabled: Bool) {
+        let s = min(id1, id2)
+        let l = max(id1, id2)
+        
+        imBuffer[s].withUnsafeBufferPointer { sBuffer in
+            obj[sBuffer[l - s - 1]] = isEnabled
+        }
+    }
+}
+
+/// 2-D object with coordinates and an ID
+@available(iOS 10.0, *)
+@available(OSX 10.12, *)
+fileprivate class IDNode2D: NSObject {
+    let id: Int
+    let halfWidth: Float
+    
+    var x: Float = 0.0
+    var y: Float = 0.0
+    
+    override var description: String {
+        "\(id) @ (\(x), \(y))"
+    }
+    
+    init(id: Int, halfWidth: Float) {
+        self.id = id
+        self.halfWidth = halfWidth
+    }
+}
+
+/// Spatial data structure that can operate on
+/// discrete changes (adds/removes) of nearby
+/// objects
+@available(iOS 10.0, *)
+@available(OSX 10.12, *)
+fileprivate class DeltaQuadTree {
+    private let tree: GKQuadtree<IDNode2D>
+    private let widthToAdd: Float
+    
+    private var idNodes = ContiguousArray<IDNode2D>()
+    private var treeNodes = ContiguousArray<GKQuadtreeNode>()
+    private var nearby = ContiguousArray<ContiguousArray<IDNode2D>>()
+    
+    //
+    
+    init(horizRange: ClosedRange<Double>, vertRange: ClosedRange<Double>, numCells: Int, maxRadius: Double) {
+        let hDiff = Float(horizRange.upperBound - horizRange.lowerBound)
+        let vDiff = Float(vertRange.upperBound - vertRange.lowerBound)
+        let buffer = Float(0.1)
+        
+        tree = GKQuadtree<IDNode2D>(boundingQuad: GKQuad(quadMin: [Float(horizRange.lowerBound) - buffer*hDiff, Float(vertRange.lowerBound) - buffer*vDiff], quadMax: [Float(horizRange.upperBound) + buffer*hDiff, Float(vertRange.upperBound) + buffer*vDiff]), minimumCellSize: (hDiff * vDiff) / Float(numCells))
+        
+        widthToAdd = Float(maxRadius)
+    }
+    
+    func reinit() {
+        nearby = ContiguousArray<ContiguousArray<IDNode2D>>(idNodes.map {
+            _ in
+            ContiguousArray<IDNode2D>()
+        })
+    }
+    
+    func addObject(halfWidth: Double, x: Double, y: Double) {
+        let idNode = IDNode2D(id: idNodes.count, halfWidth: Float(halfWidth))
+        
+        idNode.x = Float(x)
+        idNode.y = Float(y)
+        
+        idNodes.append(idNode)
+        treeNodes.append(tree.add(idNode, at: [Float(x), Float(y)]))
+        nearby.append(ContiguousArray<IDNode2D>())
+    }
+    
+    func move(id: Int, x newX: Double, y newY: Double) {
+        move(idNode: idNodes[id], x: newX, y: newY)
+    }
+    
+    func move(idNode: IDNode2D, x newX: Double, y newY: Double) {
+        let newX = Float(newX)
+        let newY = Float(newY)
+        
+        if (idNode.x != newX) || (idNode.y != newY) {
+            let id = idNode.id
+            
+            treeNodes.withUnsafeMutableBufferPointer { treeBuffer in
+                tree.remove(idNode, using: treeBuffer[id])
+                
+                idNode.x = newX
+                idNode.y = newY
+                treeBuffer[id] = tree.add(idNode, at: [newX, newY])
+            }
+        }
+    }
+    
+    func moveAll(_ f: (Int) -> (Double, Double)) {
+        idNodes.withUnsafeBufferPointer { idBuffer in
+            for idNode in idBuffer {
+                let loc = f(idNode.id)
+                
+                move(idNode: idNode, x: loc.0, y: loc.1)
+            }
+        }
+    }
+    
+    func updateNearby(_ id: Int) -> (add: ContiguousArray<IDNode2D>, remove: ContiguousArray<IDNode2D>) {
+        return updateNearby(idNodes[id])
+    }
+    
+    func updateNearby(_ idNode: IDNode2D) -> (add: ContiguousArray<IDNode2D>, remove: ContiguousArray<IDNode2D>) {
+        let searchDist = idNode.halfWidth + widthToAdd
+        
+        let oldNearby = nearby[idNode.id]
+        
+        //
+        
+        let allNearby = tree.elements(in: GKQuad(quadMin: [idNode.x-searchDist, idNode.y-searchDist], quadMax: [idNode.x+searchDist, idNode.y+searchDist]))
+        
+        var newNearby = ContiguousArray<IDNode2D>()
+        newNearby.reserveCapacity(allNearby.count - 1)
+        
+        var toAdd = ContiguousArray<IDNode2D>()
+        var toRemove = ContiguousArray<IDNode2D>()
+        
+        oldNearby.withUnsafeBufferPointer { oldBuffer in
+            for nearbyNode in allNearby {
+                if nearbyNode != idNode {
+                    newNearby.append(nearbyNode)
+                    
+                    if !oldBuffer.contains(nearbyNode) {
+                        toAdd.append(nearbyNode)
+                    }
+                }
+            }
+            
+            newNearby.withUnsafeBufferPointer { newBuffer in
+                for removeCandidate in oldBuffer {
+                    if !newBuffer.contains(removeCandidate) {
+                        toRemove.append(removeCandidate)
+                    }
+                }
+            }
+        }
+        
+        nearby[idNode.id] = newNearby
+        
+        return (add: toAdd, remove: toRemove)
+    }
+    
+    func updateAll(_ f: (Int, ContiguousArray<IDNode2D>, ContiguousArray<IDNode2D>) -> Void) {
+        idNodes.withUnsafeBufferPointer { idBuffer in
+            for idNode in idBuffer {
+                let updateResult = updateNearby(idNode)
+                
+                f(idNode.id, updateResult.add, updateResult.remove)
+            }
+        }
     }
 }
