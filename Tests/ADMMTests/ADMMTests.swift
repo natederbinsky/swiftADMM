@@ -2,7 +2,30 @@ import XCTest
 
 import ADMM
 
+@available(iOS 9.0, *)
+@available(OSX 10.11, *)
 final class ADMMTests: XCTestCase {
+    private static func _reportFindings(_ obj: ObjectiveGraph, _ numIterations: Int, _ description: String) {
+        XCTAssertEqual(0, obj.iterations)
+        XCTAssertFalse(obj.converged)
+        
+        let start = Date()
+        for _ in 1...numIterations {
+            let _ = obj.iterate()
+        }
+        let end = Date()
+        let diff = end.timeIntervalSince(start)
+        
+        let timePerIteration = 1000.0 * diff / Double(numIterations)
+        let timePerIterationEdge = 1000.0 * diff / (Double(numIterations * obj.numEnabledEdges))
+        print("\(description): \(String(format: "%.2f ms/iteration", timePerIteration)), \(String(format: "%.2e ms/iteration-edge", timePerIterationEdge))")
+        
+        XCTAssertFalse(obj.converged)
+        obj.reinitialize()
+    }
+    
+    //
+    
     private func _sudokuPerformance(algorithm: Algorithm, concurrent: Bool) -> (ObjectiveGraph, ContiguousArray<ContiguousArray<VariableNode>>, [Int]) {
         let obj = ObjectiveGraph(algorithm: algorithm, learningRate: 1.0, concurrent: concurrent)
         
@@ -34,25 +57,6 @@ final class ADMMTests: XCTestCase {
                         13, 1]
         
         return (obj, variables, solution)
-    }
-    
-    private static func _reportFindings(_ obj: ObjectiveGraph, _ numIterations: Int, _ description: String) {
-        XCTAssertEqual(0, obj.iterations)
-        XCTAssertFalse(obj.converged)
-        
-        let start = Date()
-        for _ in 1...numIterations {
-            let _ = obj.iterate()
-        }
-        let end = Date()
-        let diff = end.timeIntervalSince(start)
-        
-        let timePerIteration = 1000.0 * diff / Double(numIterations)
-        let timePerIterationEdge = 1000.0 * diff / (Double(numIterations * obj.numEnabledEdges))
-        print("\(description): \(String(format: "%.2f ms/iteration", timePerIteration)), \(String(format: "%.2e ms/iteration-edge", timePerIterationEdge))")
-        
-        XCTAssertFalse(obj.converged)
-        obj.reinitialize()
     }
     
     func testSudoku0a_ADMMSerialPerformance() throws {
@@ -93,9 +97,6 @@ final class ADMMTests: XCTestCase {
         XCTAssertEqual(0, obj.iterations)
         XCTAssertFalse(obj.converged)
         
-        let options = XCTMeasureOptions()
-        options.iterationCount = 3
-        
         for _ in 1...2 {
             for _ in 1...2000 {
                 let _ = obj.iterate()
@@ -123,6 +124,125 @@ final class ADMMTests: XCTestCase {
             obj.reinitialize()
         }
     }
+    
+    //
+
+    private func _packingPerformance(algorithm: Algorithm, concurrent: Bool) -> (ObjectiveGraph, ContiguousArray<VariableNode>, ContiguousArray<VariableNode>, ContiguousArray<Double>, Double) {
+        let convergenceDelta = 1e-5
+        let obj = ObjectiveGraph(algorithm: algorithm, learningRate: 0.07, convergenceDelta: convergenceDelta, concurrent: concurrent)
+        
+        let side = 1.0
+        let range = 0...side
+        
+        // density: 0.8
+        let circles = CirclePacking.generateCircles(rngSeed: 777, radii: [(0.050462650440403205, 100)], rangeHorizontal: range, rangeVertical: range)
+        
+        let added = CirclePacking.addToObjective(objective: obj, circles: circles, rangeHorizontal: range, rangeVertical: range, kissing: nil)
+        
+        return (obj, added.variablesX, added.variablesY, added.paramsRadius, convergenceDelta)
+    }
+    
+    func testCirclePacking0a_ADMMSerialPerformance() throws {
+        let (obj, _, _, _, _) = _packingPerformance(algorithm: .admm, concurrent: false)
+        
+        measure {
+            ADMMTests._reportFindings(obj, 30, "Circle Packing (ADMM, Serial)")
+        }
+    }
+    
+    func testCirclePacking0b_ADMMConcurrentPerformance() throws {
+        let (obj, _, _, _, _) = _packingPerformance(algorithm: .admm, concurrent: true)
+        
+        measure {
+            ADMMTests._reportFindings(obj, 30, "Circle Packing (ADMM, Concurrent)")
+        }
+    }
+    
+    func testCirclePacking1a_TWASerialPerformance() throws {
+        let (obj, _, _, _, _) = _packingPerformance(algorithm: .twa, concurrent: false)
+        
+        measure {
+            ADMMTests._reportFindings(obj, 30, "Circle Packing (TWA, Serial)")
+        }
+    }
+    
+    func testCirclePacking1b_TWAConcurrentPerformance() throws {
+        let (obj, _, _, _, _) = _packingPerformance(algorithm: .twa, concurrent: true)
+        
+        measure {
+            ADMMTests._reportFindings(obj, 30, "Circle Packing (TWA, Concurrent)")
+        }
+    }
+    
+    private static func _maxOverlap(_ obj: ObjectiveGraph, _ varsX: ContiguousArray<VariableNode>, _ varsY: ContiguousArray<VariableNode>, _ radii: ContiguousArray<Double>) -> Double {
+        let circles = (0..<varsX.count).map { i in
+            (x: obj[varsX[i]], y: obj[varsY[i]], r: radii[i])
+        }
+        
+        var maxOverlap: Double? = nil
+        
+        for i1 in 0..<(circles.count - 1) {
+            let c1 = circles[i1]
+            
+            for i2 in (i1+1)..<circles.count {
+                let c2 = circles[i2]
+                
+                let xDiff = (c1.x - c2.x)
+                let yDiff = (c1.y - c2.y)
+                let dist = sqrt(xDiff*xDiff + yDiff*yDiff)
+                
+                let sumRadii = c1.r + c2.r
+                
+                let overlap = sumRadii - dist
+                
+                if let maxSoFar = maxOverlap {
+                    if overlap > maxSoFar {
+                        maxOverlap = overlap
+                    }
+                } else {
+                    maxOverlap = overlap
+                }
+            }
+        }
+        
+        return maxOverlap!
+    }
+    
+    func testCirclePacking2a_ADMMConverged() throws {
+        let (obj, vX, vY, r, convD) = _packingPerformance(algorithm: .admm, concurrent: true)
+        
+        XCTAssertEqual(0, obj.iterations)
+        XCTAssertFalse(obj.converged)
+        
+        for _ in 1...2 {
+            for _ in 1...30000 {
+                let _ = obj.iterate()
+            }
+            XCTAssertTrue(obj.converged)
+            // print(obj.iterations) // 17202
+            XCTAssertLessThan(ADMMTests._maxOverlap(obj, vX, vY, r), 100.0*convD)
+            obj.reinitialize()
+        }
+    }
+    
+    func testCirclePacking2b_TWAConverged() throws {
+        let (obj, vX, vY, r, convD) = _packingPerformance(algorithm: .twa, concurrent: true)
+        
+        XCTAssertEqual(0, obj.iterations)
+        XCTAssertFalse(obj.converged)
+        
+        for _ in 1...2 {
+            for _ in 1...1000 {
+                let _ = obj.iterate()
+            }
+            XCTAssertTrue(obj.converged)
+            // print(obj.iterations) // 892
+            XCTAssertLessThan(ADMMTests._maxOverlap(obj, vX, vY, r), 100.0*convD)
+            obj.reinitialize()
+        }
+    }
+    
+    //
 
     static var allTests = [
         ("testSudokuADMMSerialPerformance", testSudoku0a_ADMMSerialPerformance),
@@ -131,5 +251,12 @@ final class ADMMTests: XCTestCase {
         ("testSudokuTWAConcurrentPerformance", testSudoku1b_TWAConcurrentPerformance),
         ("testSudokuADMMConverged", testSudoku2a_ADMMConverged),
         ("testSudokuTWAConverged", testSudoku2b_TWAConverged),
+        
+        ("testCirclePackingADMMSerialPerformance", testCirclePacking0a_ADMMSerialPerformance),
+        ("testCirclePackingADMMConcurrentPerformance", testCirclePacking0b_ADMMConcurrentPerformance),
+        ("testCirclePackingTWASerialPerformance", testCirclePacking1a_TWASerialPerformance),
+        ("testCirclePackingTWAConcurrentPerformance", testCirclePacking1b_TWAConcurrentPerformance),
+        ("testCirclePackingADMMConverged", testCirclePacking2a_ADMMConverged),
+        ("testCirclePackingTWAConverged", testCirclePacking2b_TWAConverged),
     ]
 }
