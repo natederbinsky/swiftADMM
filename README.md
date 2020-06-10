@@ -2,7 +2,7 @@
 
 Implements the Alternating Direction Method of Multipliers (ADMM) and Three-Weight Algorithm (TWA).
 
-See example applications (Sudoku and Circle Packing), but basic usage:
+See example applications (Sudoku and Circle Packing), but basic library usage:
 
 1. Create an `ObjectiveGraph`.
 2. Use the `createVariable` method to instantiate variables with initial values/weights.
@@ -14,3 +14,9 @@ Between iterations...
 - The `reinitialize` method resets the graph to its initial state (initial values/weights, all factors enabled).
 
 Supplied example of "fast" circle packing shows integration with a spatial index for dynamic graph management, as well as use of callbacks (functions called after iteration/reinitialization).
+
+The supplied `example.swift` is an example external client program:
+- `make` (compiles the ADMM library and example program to an `example` folder)
+- `make run` (run the example program, which is a shortcut for handling dynamic linking)
+- `make test` (run all the tests in the package)
+- `make clean` (delete the example/testing intermediate files/folders)
