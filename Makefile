@@ -18,6 +18,7 @@ lib: dir
 	rm -f $(EGDIR)/*.swift
 	cp $(LIBDIR)/*.swift $(EGDIR)
 	pushd $(EGDIR) ; swiftc -emit-library -emit-module -parse-as-library -module-name ADMM *.swift
+	rm -f $(EGDIR)/*.swift
 
 example: lib
 	cp $(EGFILE) $(EGDIR)
@@ -26,5 +27,9 @@ example: lib
 run: $(EGEXEC)
 	@export DYLD_LIBRARY_PATH=$(EGDIR):${DYLD_LIBRARY_PATH} ; $(EGEXEC)
 
+test:
+	@pushd Tests ; swift test --configuration release
+
 clean:
 	rm -Rf $(EGDIR)
+	rm -Rf .build
