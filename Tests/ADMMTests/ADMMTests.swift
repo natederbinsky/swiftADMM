@@ -29,6 +29,7 @@ final class ADMMTests: XCTestCase {
     private func _sudokuPerformance(algorithm: Algorithm, concurrent: Bool) -> (ObjectiveGraph, ContiguousArray<ContiguousArray<VariableNode>>, [Int]) {
         let obj = ObjectiveGraph(algorithm: algorithm, learningRate: 1.0, concurrent: concurrent)
         
+        // source: https://www.menneske.no/sudoku/eng/
         let given = [62: 5, 130: 6, 91: 8, 2: 4, 114: 0, 222: 2, 139: 7, 39: 5, 102: 2, 60: 0,
                      188: 10, 148: 2, 42: 15, 224: 13, 28: 1, 119: 6, 85: 14, 135: 4, 170: 8,
                      158: 7, 146: 5, 58: 7, 181: 0, 36: 7, 180: 15, 33: 10, 107: 9, 253: 10,
@@ -40,8 +41,6 @@ final class ADMMTests: XCTestCase {
                      120: 14, 197: 9, 254: 13, 227: 7, 109: 11, 3: 9, 23: 0, 15: 14, 154: 14,
                      61: 15, 17: 11, 59: 14, 219: 3, 136: 13, 5: 11, 142: 15, 89: 6, 127: 8,
                      9: 13, 56: 2, 44: 3, 143: 9, 249: 15, 167: 9, 211: 10]
-        
-        let variables = Sudoku.addToObjective(objective: obj, innerSide: 4, known: given)
         
         let solution = [15, 5, 4, 9, 1, 11, 12, 3, 10, 13, 6, 0, 2, 7, 8, 14, 8, 11, 7, 2, 14, 6, 15,
                         0, 5, 3, 4, 12, 1, 9, 10, 13, 14, 10, 13, 0, 7, 2, 9, 5, 8, 11, 15, 1, 3, 6,
@@ -55,6 +54,8 @@ final class ADMMTests: XCTestCase {
                         15, 5, 12, 15, 10, 0, 8, 13, 11, 6, 14, 1, 3, 9, 4, 2, 7, 13, 6, 2, 7, 10, 12,
                         1, 15, 11, 8, 9, 4, 14, 3, 0, 5, 9, 8, 11, 4, 5, 7, 3, 14, 12, 15, 0, 2, 6, 10,
                         13, 1]
+        
+        let variables = Sudoku.addToObjective(objective: obj, innerSide: 4, known: given)
         
         return (obj, variables, solution)
     }
